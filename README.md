@@ -43,7 +43,8 @@ Proyek ini adalah dashboard interaktif yang dibuat menggunakan Streamlit untuk m
 │   ├── hour.csv
 ├── notebook.py		
 ├── requirements.txt	
-├── README.md		
+├── README.md
+├── url.txt		
 ```
 
 ## 📊 Insight Utama dari Analisis
