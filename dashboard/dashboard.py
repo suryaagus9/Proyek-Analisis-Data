@@ -1,88 +1,93 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 
 # Load data
-day_df = pd.read_csv("data/day.csv")
-hour_df = pd.read_csv("data/hour.csv")
-
-# Konversi kolom tanggal
-day_df["dteday"] = pd.to_datetime(day_df["dteday"])
-hour_df["dteday"] = pd.to_datetime(hour_df["dteday"])
+all_df = pd.read_csv("dashboard/main_data.csv")
 
 # Sidebar
 st.sidebar.image(
-    "https://img.freepik.com/free-vector/bike-sharing-abstract-concept-illustration_335657-3741.jpg?t=st=1741176107~exp=1741179707~hmac=cddbe4c22d9a1832927337e248390713d92163f94f05ff79497bda8729ca5325&w=900",
+    "https://img.freepik.com/free-vector/bike-sharing-abstract-concept-illustration_335657-3741.jpg",
     use_container_width=True
 )
 
 st.sidebar.header("📅 Filter Waktu")
 
-# Pilih bulan & tahun
-month_list = sorted(day_df["dteday"].dt.month.unique())
-year_list = sorted(day_df["dteday"].dt.year.unique())
+# Pilih rentang tanggal
+min_date = pd.to_datetime(all_df["dteday"].min())
+max_date = pd.to_datetime(all_df["dteday"].max())
+date_range = st.sidebar.date_input("Pilih Rentang Tanggal:", [min_date, max_date], min_value=min_date, max_value=max_date)
+
+# Pilih bulan & tahun dengan opsi "Semua"
+month_list = ["Semua"] + sorted(all_df["mnth"].unique().tolist())
+
+# Konversi tahun dari angka ke label yang sesuai
+year_mapping = {0: "2011", 1: "2012"}
+year_list = ["Semua"] + [year_mapping[y] for y in sorted(all_df["yr"].unique())]
 
 selected_month = st.sidebar.selectbox("Pilih Bulan:", month_list, index=0)
 selected_year = st.sidebar.selectbox("Pilih Tahun:", year_list, index=0)
 
-# Pilih jam (hanya untuk data per jam)
+# Pilih jam
 selected_hour = st.sidebar.slider("Pilih Jam:", min_value=0, max_value=23, value=(0, 23))
 
-# Filter data berdasarkan bulan & tahun
-filtered_day_df = day_df[
-    (day_df["dteday"].dt.month == selected_month) &
-    (day_df["dteday"].dt.year == selected_year)
+# Filter data berdasarkan rentang tanggal, bulan & tahun
+all_df["dteday"] = pd.to_datetime(all_df["dteday"])
+filtered_df = all_df[
+    (all_df["dteday"] >= pd.to_datetime(date_range[0])) & 
+    (all_df["dteday"] <= pd.to_datetime(date_range[1])) & 
+    (all_df["hr"] >= selected_hour[0]) & (all_df["hr"] <= selected_hour[1])
 ]
 
-filtered_hour_df = hour_df[
-    (hour_df["dteday"].dt.month == selected_month) &
-    (hour_df["dteday"].dt.year == selected_year) &
-    (hour_df["hr"] >= selected_hour[0]) &
-    (hour_df["hr"] <= selected_hour[1])
-]
+if selected_month != "Semua":
+    filtered_df = filtered_df[filtered_df["mnth"] == int(selected_month)]
+
+if selected_year != "Semua":
+    filtered_df = filtered_df[filtered_df["yr"] == int([k for k, v in year_mapping.items() if v == selected_year][0])]
+
 
 # Header
 st.title("🚴‍♂️ Dashboard Bike Sharing 🚲")
-st.write("Analisis penggunaan sepeda berdasarkan cuaca, hari kerja, dan jam.")
+st.write("Analisis penggunaan sepeda berdasarkan cuaca, musim, hari kerja, dan jam.")
 
-# Tabs untuk berbagai analisis
-tab1, tab2, tab3 = st.tabs(["🌤 Pengaruh Cuaca", "📆 Pola Harian", "🕒 Pola Jam"])
+# Pengaruh Kondisi Cuaca terhadap Jumlah Pengguna Sepeda
+st.subheader("🌦 Pengaruh Cuaca terhadap Penggunaan Sepeda")
+weather_data = filtered_df.groupby("weathersit")["cnt"].mean().reset_index()
+weather_labels = {1: "Cerah", 2: "Berawan", 3: "Hujan/Salju"}
+fig = px.bar(weather_data, x="weathersit", y="cnt", text_auto=True, color="cnt", labels={"weathersit": "Kondisi Cuaca", "cnt": "Jumlah Pengguna Sepeda"}, color_continuous_scale="blues")
+fig.update_xaxes(tickmode="array", tickvals=[1, 2, 3], ticktext=list(weather_labels.values()))
+st.plotly_chart(fig)
 
-# **🌤 Analisis Pengaruh Cuaca**
-with tab1:
-    st.subheader("🌤 Pengaruh Cuaca terhadap Penggunaan Sepeda")
+# Pengaruh Musim terhadap Jumlah Pengguna Sepeda
+st.subheader("🌤 Pengaruh Musim terhadap Penggunaan Sepeda")
+season_data = filtered_df.groupby("season")["cnt"].mean().reset_index()
+season_labels = {1: "Semi", 2: "Panas", 3: "Gugur", 4: "Dingin"}
+fig = px.bar(season_data, x="season", y="cnt", text_auto=True, color="cnt", labels={"season": "Musim", "cnt": "Jumlah Pengguna Sepeda"}, color_continuous_scale="blues")
+fig.update_xaxes(tickmode="array", tickvals=[1, 2, 3, 4], ticktext=list(season_labels.values()))
+st.plotly_chart(fig)
 
-    # Boxplot Cuaca vs Jumlah Pengguna Sepeda
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.boxplot(x="weathersit", y="cnt", data=filtered_day_df, palette="coolwarm", ax=ax)
-    ax.set_xticklabels(["Cerah", "Berawan", "Hujan/Salju"])
-    ax.set_xlabel("Kondisi Cuaca")
-    ax.set_ylabel("Jumlah Pengguna Sepeda")
-    st.pyplot(fig)
+# Pengguna Sepeda Berdasarkan Hari Kerja vs Akhir Pekan
+st.subheader("📆 Pola Penggunaan Sepeda Berdasarkan Hari Kerja & Akhir Pekan")
+workingday_data = filtered_df.groupby("workingday")["cnt"].mean().reset_index()
+workingday_labels = {0: "Akhir Pekan", 1: "Hari Kerja"}
+fig = px.bar(workingday_data, x="workingday", y="cnt", text_auto=True, color="workingday", labels={"workingday": "Kategori Hari", "cnt": "Jumlah Pengguna Sepeda"}, color_continuous_scale="blues")
+fig.update_xaxes(tickmode="array", tickvals=[0, 1], ticktext=list(workingday_labels.values()))
+st.plotly_chart(fig)
 
-# **📆 Pola Penggunaan Sepeda Berdasarkan Hari Kerja & Akhir Pekan**
-with tab2:
-    st.subheader("📆 Pola Penggunaan Sepeda: Hari Kerja vs Akhir Pekan")
 
-    # Boxplot Hari Kerja vs Akhir Pekan
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.boxplot(x="workingday", y="cnt", data=filtered_day_df, palette="Set2", ax=ax)
-    ax.set_xticklabels(["Akhir Pekan", "Hari Kerja"])
-    ax.set_xlabel("Kategori")
-    ax.set_ylabel("Jumlah Pengguna Sepeda")
-    st.pyplot(fig)
+# Perbandingan Hari Kerja vs Akhir Pekan dalam Penggunaan Sepeda
+st.subheader("📊 Perbandingan Pola Penggunaan Sepeda Pada Hari Kerja & Akhir Pekan")
+workingday_hour_data = filtered_df.groupby(["hr", "workingday"])["cnt"].mean().reset_index()
+workingday_labels = {0: "Akhir Pekan", 1: "Hari Kerja"}  
+fig = px.line(
+    workingday_hour_data, 
+    x="hr", 
+    y="cnt", 
+    color="workingday", 
+    labels={"hr": "Jam", "cnt": "Jumlah Pengguna Sepeda", "workingday": "Kategori Hari"},
+    color_discrete_map={0: "red", 1: "blue"},
+    category_orders={"workingday": [0, 1]} 
+)
+fig.for_each_trace(lambda t: t.update(name=workingday_labels[int(t.name)]))  
+st.plotly_chart(fig)
 
-# **🕒 Pola Penggunaan Sepeda Berdasarkan Jam**
-with tab3:
-    st.subheader("🕒 Pola Penggunaan Sepeda Berdasarkan Jam")
-
-    # Line Chart Pola Jam
-    fig = px.line(filtered_hour_df.groupby("hr")["cnt"].mean().reset_index(), x="hr", y="cnt", markers=True)
-    fig.update_layout(xaxis_title="Jam", yaxis_title="Jumlah Pengguna Sepeda")
-    st.plotly_chart(fig)
-
-# Menjalankan Streamlit
-if __name__ == "__main__":
-    st.sidebar.success("Pilih tab untuk melihat analisis lebih lanjut")  
